@@ -129,15 +129,16 @@ solveSystem cont = systemSolvingLoop cont 0
 
 buildTypeUnificator :: Tree -> Set.Set String -> Map.Map String String -> (UnificatorPair, (Set.Set String, Map.Map String String))
 buildTypeUnificator (Var x) usedVarsNames clojMap  =
-        let varType = Map.lookup x clojMap
+        let varType     = Map.lookup x clojMap
         in
         unpackType varType
         where
             unpackType (Just varType) = (UnificatorPair EmptyContext (VarStatement varType), (usedVarsNames, clojMap))
             unpackType Nothing        = 
-                let newVarName  = setNewName ("a" ++ x) usedVarsNames
+                let newUsedVars = Set.insert x newUsedVars
+                    newVarName  = setNewName ("a" ++ x) usedVarsNames
                 in
-                (UnificatorPair EmptyContext (VarStatement newVarName), (Set.insert newVarName usedVarsNames, Map.insert x newVarName clojMap))
+                (UnificatorPair EmptyContext (VarStatement newVarName), (Set.insert newVarName newUsedVars, Map.insert x newVarName clojMap))
 buildTypeUnificator (ApplicationTree p q) usedVarsNames clojMap  = 
         let pResult         = buildTypeUnificator p usedVarsNames clojMap
             qResult         = buildTypeUnificator q (fst $ snd pResult) (snd $ snd pResult)
@@ -151,8 +152,9 @@ buildTypeUnificator (ApplicationTree p q) usedVarsNames clojMap  =
             (uniteContexts (getContext $ fst pResult) (getContext $ fst qResult) (Equation pType (ImplicationStatement qType (VarStatement newVarName))))
             (VarStatement newVarName),  (newUsedVars, Map.union (snd $ snd pResult) (snd $ snd qResult)))
 buildTypeUnificator (LambdaTree (Var x) p) usedVarsNames clojMap = 
-        let newVarName  = setNewName ("a" ++ x) usedVarsNames
-            pResult     = buildTypeUnificator p (Set.insert newVarName usedVarsNames) (Map.insert x newVarName clojMap)
+        let newUsedVars = Set.insert x usedVarsNames
+            newVarName  = setNewName ("a" ++ x) newUsedVars
+            pResult     = buildTypeUnificator p (Set.insert newVarName newUsedVars) (Map.insert x newVarName clojMap)
         in
         (UnificatorPair (getContext $ fst pResult) (ImplicationStatement (VarStatement newVarName) (getVarType $ fst pResult)),  (fst $ snd pResult, snd $ snd pResult))
        
@@ -166,9 +168,10 @@ buildExprTypeTemplate (Var x) usedVarsNames clojMap =
         where
             unpackType (Just varType) = (VarStatement varType, (usedVarsNames, clojMap))
             unpackType Nothing        = 
-                let newVarName  = setNewName ("a" ++ x) usedVarsNames
+                let newUsedVars = Set.insert x usedVarsNames
+                    newVarName  = setNewName ("a" ++ x) newUsedVars
                 in
-                (VarStatement newVarName, (Set.insert newVarName usedVarsNames, Map.insert x newVarName clojMap))
+                (VarStatement newVarName, (Set.insert newVarName newUsedVars, Map.insert x newVarName clojMap))
 buildExprTypeTemplate (ApplicationTree p q) usedVarsNames clojMap  = 
         let pResult         = buildExprTypeTemplate p usedVarsNames clojMap
             qResult         = buildExprTypeTemplate q (fst $ snd pResult) (snd $ snd pResult)
@@ -178,8 +181,9 @@ buildExprTypeTemplate (ApplicationTree p q) usedVarsNames clojMap  =
         in
         (VarStatement newVarName, (newUsedVars, Map.union (snd $ snd pResult) (snd $ snd qResult)))
 buildExprTypeTemplate (LambdaTree (Var x) p) usedVarsNames clojMap = 
-        let newVarName  = setNewName ("a" ++ x) usedVarsNames
-            pResult     = buildExprTypeTemplate p (Set.insert newVarName usedVarsNames) (Map.insert x newVarName clojMap)
+        let newUsedVars = Set.insert x usedVarsNames
+            newVarName  = setNewName ("a" ++ x) newUsedVars
+            pResult     = buildExprTypeTemplate p (Set.insert newVarName newUsedVars) (Map.insert x newVarName clojMap)
         in
         (ImplicationStatement (VarStatement newVarName) (fst pResult), (fst $ snd pResult, snd $ snd pResult))
 
@@ -190,11 +194,12 @@ getTypeInferenceStep innerLevel tiContext exprTypePair ruleNum =
 
 buildTypeInference :: Tree -> Map.Map Statement Statement -> TypeInferenceContext -> Int -> Set.Set String -> Map.Map String String -> ([String], (Set.Set String, Map.Map String String))
 buildTypeInference expr@(LambdaTree var@(Var x) p) vtMap tiContext innerLevel usedVarsNames clojMap = 
-    let newVarName   = setNewName ("a" ++ x) usedVarsNames
-        typeTemplate = buildExprTypeTemplate expr usedVarsNames clojMap
+    let newUsedVars  = Set.insert x usedVarsNames
+        newVarName   = setNewName ("a" ++ x) newUsedVars
+        typeTemplate = buildExprTypeTemplate expr newUsedVars clojMap
         exprTypePair = TypePair expr (substituteTypes (fst $ typeTemplate) vtMap)
         xTypePair    = TypePair var (substituteTypes (VarStatement newVarName) vtMap)
-        pTypeInf     = buildTypeInference p vtMap (Set.insert xTypePair tiContext) (innerLevel + 1) (Set.insert newVarName usedVarsNames) (Map.insert x newVarName clojMap)
+        pTypeInf     = buildTypeInference p vtMap (Set.insert xTypePair tiContext) (innerLevel + 1) (Set.insert newVarName newUsedVars) (Map.insert x newVarName clojMap)
     in
     (getTypeInferenceStep innerLevel tiContext exprTypePair 3 : (fst pTypeInf), (fst $ snd pTypeInf, snd $ snd pTypeInf))
 buildTypeInference expr@(ApplicationTree p q) vtMap tiContext innerLevel usedVarsNames clojMap     =
@@ -216,10 +221,11 @@ buildTypeInference expr@(Var x) vtMap tiContext innerLevel usedVarsNames clojMap
             in
             (getTypeInferenceStep innerLevel (Set.insert exprTypePair tiContext) exprTypePair 1 : [], (usedVarsNames, clojMap))
         unpackType Nothing        = 
-            let newVarName  = setNewName ("a" ++ x) usedVarsNames
+            let newUsedVars = Set.insert x usedVarsNames
+                newVarName  = setNewName ("a" ++ x) newUsedVars
                 exprTypePair = TypePair expr (substituteTypes (VarStatement newVarName) vtMap) 
             in
-            (getTypeInferenceStep innerLevel (Set.insert exprTypePair tiContext) exprTypePair 1 : [], (Set.insert newVarName usedVarsNames, Map.insert x newVarName clojMap)) 
+            (getTypeInferenceStep innerLevel (Set.insert exprTypePair tiContext) exprTypePair 1 : [], (Set.insert newVarName newUsedVars, Map.insert x newVarName clojMap)) 
 
 getContext :: UnificatorPair -> Context
 getContext (UnificatorPair cont varName) =  cont
@@ -254,13 +260,15 @@ showTypeInferenceContext (x : []) = show x ++ " "
 showTypeInferenceContext (x : xs) = show x ++ ", " ++ showTypeInferenceContext xs
 
 
+
 getInferencePrefix :: Int -> String
 getInferencePrefix innerLevel = concat $ take innerLevel (repeat "*   ") 
 
 getFreeVars :: Tree -> Set.Set String -> Map.Map String String -> (Set.Set (String, String), (Set.Set String, Map.Map String String))
 getFreeVars (LambdaTree (Var x) p) usedVarsNames clojMap = 
-    let newVarName  = setNewName ("a" ++ x) usedVarsNames
-        pResult     = getFreeVars p (Set.insert newVarName usedVarsNames) (Map.insert x newVarName clojMap)
+    let newUsedVars = Set.insert x usedVarsNames
+        newVarName  = setNewName ("a" ++ x) newUsedVars
+        pResult     = getFreeVars p (Set.insert newVarName newUsedVars) (Map.insert x newVarName clojMap)
     in
     (Set.delete (x, newVarName) (fst pResult), (fst $ snd pResult, snd $ snd pResult))
 getFreeVars (ApplicationTree p q) usedVarsNames clojMap =
@@ -275,9 +283,10 @@ getFreeVars (Var x) usedVarsNames clojMap              =
     where
         unpackType (Just varType) = (Set.singleton (x, varType), (usedVarsNames, clojMap))
         unpackType Nothing        = 
-            let newVarName  = setNewName ("a" ++ x) usedVarsNames
+            let newUsedVars = Set.insert x usedVarsNames
+                newVarName  = setNewName ("a" ++ x) newUsedVars
             in
-            (Set.singleton (x, newVarName), (Set.insert newVarName usedVarsNames, Map.insert x newVarName clojMap))
+            (Set.singleton (x, newVarName), (Set.insert newVarName newUsedVars, Map.insert x newVarName clojMap))
 
 buildInferenceContext :: Tree -> Map.Map Statement Statement -> TypeInferenceContext
 buildInferenceContext expr vtMap = 
@@ -305,7 +314,7 @@ typing expr =
             -- show inferenceContext 
             unlines $ fst typeInference
             -- show solvedSystem ++ " " ++ show resultedType
-        buildTypeInferenceOrReturnNoTypeString Nothing _                     = "Expresion has no type\n"
+        buildTypeInferenceOrReturnNoTypeString Nothing _                     = "Expression has no type\n"
 
 main::IO()
 main = do 
