@@ -137,10 +137,10 @@ buildTypeUnificator (Var x) usedVarsNames clojMap  =
             unpackType Nothing        = 
                 let newVarName  = setNewName ("a" ++ x) usedVarsNames
                 in
-                (UnificatorPair EmptyContext (VarStatement newVarName), (Set.insert newVarName usedVarsNames, clojMap))
+                (UnificatorPair EmptyContext (VarStatement newVarName), (Set.insert newVarName usedVarsNames, Map.insert x newVarName clojMap))
 buildTypeUnificator (ApplicationTree p q) usedVarsNames clojMap  = 
         let pResult         = buildTypeUnificator p usedVarsNames clojMap
-            qResult         = buildTypeUnificator q (fst $ snd pResult) clojMap
+            qResult         = buildTypeUnificator q (fst $ snd pResult) (snd $ snd pResult)
             updatedUsedVars = fst $ snd qResult
             newVarName      = setNewName ("a'") updatedUsedVars
             pType           = getVarType $ fst pResult
@@ -168,10 +168,10 @@ buildExprTypeTemplate (Var x) usedVarsNames clojMap =
             unpackType Nothing        = 
                 let newVarName  = setNewName ("a" ++ x) usedVarsNames
                 in
-                (VarStatement newVarName, (Set.insert newVarName usedVarsNames, clojMap))
+                (VarStatement newVarName, (Set.insert newVarName usedVarsNames, Map.insert x newVarName clojMap))
 buildExprTypeTemplate (ApplicationTree p q) usedVarsNames clojMap  = 
         let pResult         = buildExprTypeTemplate p usedVarsNames clojMap
-            qResult         = buildExprTypeTemplate q (fst $ snd pResult) clojMap
+            qResult         = buildExprTypeTemplate q (fst $ snd pResult) (snd $ snd pResult)
             updatedUsedVars = fst $ snd qResult
             newVarName      = setNewName ("a'") updatedUsedVars
             newUsedVars     = Set.insert newVarName updatedUsedVars 
@@ -200,7 +200,7 @@ buildTypeInference expr@(LambdaTree var@(Var x) p) vtMap tiContext innerLevel us
 buildTypeInference expr@(ApplicationTree p q) vtMap tiContext innerLevel usedVarsNames clojMap     =
     let typeTemplate = buildExprTypeTemplate expr usedVarsNames clojMap
         pTypeInf     = buildTypeInference p vtMap tiContext (innerLevel + 1) usedVarsNames clojMap
-        qTypeInf     = buildTypeInference q vtMap tiContext (innerLevel + 1) (fst $ snd pTypeInf) clojMap
+        qTypeInf     = buildTypeInference q vtMap tiContext (innerLevel + 1) (fst $ snd pTypeInf) (snd $ snd pTypeInf)
         newUsedVars =  fst $ snd qTypeInf
         exprTypePair = TypePair expr (substituteTypes (fst $ typeTemplate) vtMap)
     in 
@@ -219,7 +219,7 @@ buildTypeInference expr@(Var x) vtMap tiContext innerLevel usedVarsNames clojMap
             let newVarName  = setNewName ("a" ++ x) usedVarsNames
                 exprTypePair = TypePair expr (substituteTypes (VarStatement newVarName) vtMap) 
             in
-            (getTypeInferenceStep innerLevel (Set.insert exprTypePair tiContext) exprTypePair 1 : [], (Set.insert newVarName usedVarsNames, clojMap)) 
+            (getTypeInferenceStep innerLevel (Set.insert exprTypePair tiContext) exprTypePair 1 : [], (Set.insert newVarName usedVarsNames, Map.insert x newVarName clojMap)) 
 
 getContext :: UnificatorPair -> Context
 getContext (UnificatorPair cont varName) =  cont
@@ -254,7 +254,6 @@ showTypeInferenceContext (x : []) = show x ++ " "
 showTypeInferenceContext (x : xs) = show x ++ ", " ++ showTypeInferenceContext xs
 
 
-
 getInferencePrefix :: Int -> String
 getInferencePrefix innerLevel = concat $ take innerLevel (repeat "*   ") 
 
@@ -266,7 +265,7 @@ getFreeVars (LambdaTree (Var x) p) usedVarsNames clojMap =
     (Set.delete (x, newVarName) (fst pResult), (fst $ snd pResult, snd $ snd pResult))
 getFreeVars (ApplicationTree p q) usedVarsNames clojMap =
     let pVars = getFreeVars p usedVarsNames clojMap
-        qVars = getFreeVars q (fst $ snd pVars) clojMap
+        qVars = getFreeVars q (fst $ snd pVars) (snd $ snd pVars)
     in 
     (Set.union (fst pVars) (fst qVars), (fst $ snd qVars, Map.union (snd $ snd pVars) (snd $ snd qVars)))
 getFreeVars (Var x) usedVarsNames clojMap              = 
