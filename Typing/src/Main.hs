@@ -135,7 +135,7 @@ buildTypeUnificator (Var x) usedVarsNames clojMap  =
         where
             unpackType (Just varType) = (UnificatorPair EmptyContext (VarStatement varType), (usedVarsNames, clojMap))
             unpackType Nothing        = 
-                let newUsedVars = Set.insert x newUsedVars
+                let newUsedVars = Set.insert x usedVarsNames
                     newVarName  = setNewName ("a" ++ x) usedVarsNames
                 in
                 (UnificatorPair EmptyContext (VarStatement newVarName), (Set.insert newVarName newUsedVars, Map.insert x newVarName clojMap))
