@@ -194,11 +194,12 @@ getTypeInferenceStep innerLevel tiContext exprTypePair ruleNum =
 
 buildTypeInference :: Tree -> Map.Map Statement Statement -> TypeInferenceContext -> Int -> Set.Set String -> Map.Map String String -> ([String], (Set.Set String, Map.Map String String))
 buildTypeInference expr@(LambdaTree var@(Var x) p) vtMap tiContext innerLevel usedVarsNames clojMap = 
-    let varTypeTemplate = buildExprTypeTemplate var usedVarsNames clojMap
-        typeTemplate    = buildExprTypeTemplate expr (fst $ snd varTypeTemplate) (snd $ snd varTypeTemplate)
-        exprTypePair    = TypePair expr (substituteTypes (fst $ typeTemplate) vtMap)
-        xTypePair       = TypePair var (substituteTypes (fst $ varTypeTemplate) vtMap)
-        pTypeInf        = buildTypeInference p vtMap (Set.insert xTypePair tiContext) (innerLevel + 1) (fst $ snd varTypeTemplate) (snd $ snd varTypeTemplate)
+    let newUsedVars  = Set.insert x usedVarsNames
+        newVarName   = setNewName ("a" ++ x) newUsedVars
+        typeTemplate = buildExprTypeTemplate expr newUsedVars clojMap
+        exprTypePair = TypePair expr (substituteTypes (fst $ typeTemplate) vtMap)
+        xTypePair    = TypePair var (substituteTypes (VarStatement newVarName) vtMap)
+        pTypeInf     = buildTypeInference p vtMap (Set.insert xTypePair tiContext) (innerLevel + 1) (Set.insert newVarName newUsedVars) (Map.insert x newVarName clojMap)
     in
     (getTypeInferenceStep innerLevel tiContext exprTypePair 3 : (fst pTypeInf), (fst $ snd pTypeInf, snd $ snd pTypeInf))
 buildTypeInference expr@(ApplicationTree p q) vtMap tiContext innerLevel usedVarsNames clojMap     =
