@@ -21,6 +21,16 @@ uniteContexts (Context eqs) EmptyContext eq    = Context (eq : eqs)
 uniteContexts (Context eqs1) (Context eqs2) eq = Context (eq : (eqs1 ++ eqs2))
 uniteContexts EmptyContext EmptyContext eq     = Context [eq]
 
+getContext :: UnificatorPair -> Context
+getContext (UnificatorPair cont varName) =  cont
+
+getVarType :: UnificatorPair -> Statement 
+getVarType (UnificatorPair cont statement) = statement
+
+getEquations :: Context -> [Equation]
+getEquations (Context eqs)  = eqs
+getEquations EmptyContext   = []
+
 statementSubstitution :: Statement -> Statement -> Statement -> Statement
 statementSubstitution a omega (ImplicationStatement lp rp) =
     ImplicationStatement (statementSubstitution a omega lp) (statementSubstitution a omega rp)
@@ -220,33 +230,23 @@ buildTypeInference expr@(LambdaTree var@(Var x) p) vtMap tiContext innerLevel us
         xTypePair        = TypePair var (substituteTypes varTypeStatement vtMap)
         pTypeInf         = buildTypeInference p vtMap (Set.insert xTypePair tiContext) (innerLevel + 1) newUsedVars clojMap
     in 
-    (getTypeInferenceStep innerLevel tiContext exprTypePair 3 : (fst pTypeInf), (fst $ snd pTypeInf, snd $ snd pTypeInf))
+    (getTypeInferenceStep innerLevel tiContext exprTypePair 3 : (fst pTypeInf), (fst $ snd pTypeInf, Map.delete x (snd $ snd pTypeInf)))
 buildTypeInference expr@(ApplicationTree p q) vtMap tiContext innerLevel usedVarsNames clojMap     =
     let typeTemplate = buildExprTypeTemplate expr usedVarsNames clojMap
         pTypeInf     = buildTypeInference p vtMap tiContext (innerLevel + 1) usedVarsNames clojMap
         qTypeInf     = buildTypeInference q vtMap tiContext (innerLevel + 1) (fst $ snd pTypeInf) (snd $ snd pTypeInf)
-        newUsedVars =  fst $ snd qTypeInf
+        newUsedVars  = Set.union (fst $ snd pTypeInf) (fst $ snd qTypeInf)
         exprTypePair = TypePair expr (substituteTypes (fst $ typeTemplate) vtMap)
     in 
     (getTypeInferenceStep innerLevel tiContext exprTypePair 2 
-        : (fst pTypeInf ++ fst qTypeInf ), (newUsedVars, snd $ snd qTypeInf))
+        : (fst pTypeInf ++ fst qTypeInf ), (Set.insert (show (fst typeTemplate)) newUsedVars, snd $ snd qTypeInf))
 buildTypeInference expr@(Var x) vtMap tiContext innerLevel usedVarsNames clojMap                   =
     let varTypeTemplate = buildExprTypeTemplate expr usedVarsNames clojMap
         varTypePair     = TypePair expr (substituteTypes (fst $ varTypeTemplate) vtMap)
     in
-     (getTypeInferenceStep innerLevel (Set.insert varTypePair tiContext) varTypePair 1 : [], ((fst $ snd varTypeTemplate), (snd $ snd varTypeTemplate))) 
+     (getTypeInferenceStep innerLevel (Set.insert varTypePair tiContext) varTypePair 1 : [], 
+        (Set.insert (show (fst varTypeTemplate)) (fst $ snd varTypeTemplate), Map.insert x (show (fst varTypeTemplate)) (snd $ snd varTypeTemplate))) 
            
-
-getContext :: UnificatorPair -> Context
-getContext (UnificatorPair cont varName) =  cont
-
-getVarType :: UnificatorPair -> Statement 
-getVarType (UnificatorPair cont statement) = statement
-
-getEquations :: Context -> [Equation]
-getEquations (Context eqs)  = eqs
-getEquations EmptyContext   = []
-
 buildVarTypesMap :: [Equation] -> Map.Map Statement Statement -> Map.Map Statement Statement
 buildVarTypesMap [] varsTypesMap                            = varsTypesMap
 buildVarTypesMap ((Equation stat1 stat2) : xs) varsTypesMap = 
@@ -268,7 +268,6 @@ showTypeInferenceContext :: [TypePair] -> String
 showTypeInferenceContext []       = []
 showTypeInferenceContext (x : []) = show x ++ " "
 showTypeInferenceContext (x : xs) = show x ++ ", " ++ showTypeInferenceContext xs
-
 
 getInferencePrefix :: Int -> String
 getInferencePrefix innerLevel = concat $ take innerLevel (repeat "*   ") 
@@ -319,7 +318,6 @@ typing expr =
     let unifPair          = fst $ buildTypeUnificator expr Set.empty Map.empty
         solvedSystem      = solveSystem $ getContext $ unifPair
     in
-    -- show $ getContext $ unifPair
     buildTypeInferenceOrReturnNoTypeString solvedSystem (getVarType unifPair)
     where
         buildTypeInferenceOrReturnNoTypeString (Just solvedSystem) exprType = 
@@ -328,9 +326,7 @@ typing expr =
                 inferenceContext  = buildInferenceContext expr varsTypesMap 
                 typeInference     = buildTypeInference expr varsTypesMap inferenceContext 0 Set.empty Map.empty
             in
-            -- show inferenceContext 
             unlines $ fst typeInference
-            -- show solvedSystem ++ " " ++ show resultedType
         buildTypeInferenceOrReturnNoTypeString Nothing _                     = "Expression has no type\n"
 
 main::IO()
